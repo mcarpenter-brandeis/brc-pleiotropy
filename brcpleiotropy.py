@@ -472,7 +472,11 @@ finalsum.to_csv('All Genes Summary Table.csv', index=False) # complete summary t
 
 
 ###PyRosetta Score Generation
+from rosetta.protocols.relax import FastRelax
 sfxn = get_score_function(True)
+fr = FastRelax()
+fr.set_scorefxn(sfxn)
+fr.max_iter(100)
 
 #Call in File with conserved snps for mutagenesis
 prsnps = pd.read_csv('./data/pyrosettasnps.csv')
@@ -488,11 +492,14 @@ for filename in os.listdir('./pdbs'):
         
         #read in the pdb file
         pose = pose_from_pdb(filepath)
+        fr.apply(pose)
+        rname = genename + "_relaxed.pdb"
+        pose.dump_pdb(rname)
         ascore = sfxn(pose)
         genescores = genescores.append({'gene': genename, 'score': ascore}, ignore_index=True)
         
         for index,row in prsnps.iterrows():
-            pscore = sfxn(pose)
+            original_pose = pose.clone()
             if row['gene'] == genename:
                 fres = pose.pdb_info().pdb2pose('A', row['res'])
                 if fres == 0:
@@ -507,9 +514,9 @@ for filename in os.listdir('./pdbs'):
                     else:
                         t1 = three_to_one(tres)
                 if row['i1aa'] == t1:                
-                    mutate_residue(pose, fres, row['snpaa'])
-                    mscore = sfxn(pose)
-                    netscore = mscore - pscore
+                    mutate_residue(original_pose, fres, row['snpaa'])
+                    mscore = sfxn(original_pose)
+                    netscore = mscore - ascore
                     scoredf = scoredf.append({'dbsnp': row['dbsnp'], 'score': netscore}, ignore_index=True)
                 else:
                     print(row['dbsnp'] + ' no match')
