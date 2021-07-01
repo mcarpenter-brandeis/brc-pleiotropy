@@ -71,22 +71,24 @@ def eta(data, unit='natural'):
 
 pd.set_option('display.max_colwidth',None)
 
-#Complete disease data frame from all clinvar snps associated with the listed secondary diseases
-diseases = pd.concat(map(pd.read_csv, glob.glob(os.path.join('./diseases', "*.csv"))), ignore_index=True)
-diseases.columns = ['name', 'genes', 'proteins', 'conditions', 'clinsig', 'review', 'accession', 'grch37chr', 'grch37loc', 'grch38chr', 'grch38loc','varid', 'alleleid', 'dbsnp', 'spdi']
-diseases = diseases.drop_duplicates()
-
 #Dataframe from clinvar snps associated with breast cancer
 brdf = pd.read_csv('./diseases/clinvar_breastcancer.csv')
 brdf.columns = ['name', 'genes', 'proteins', 'conditions', 'clinsig', 'review', 'accession', 'grch37chr', 'grch37loc', 'grch38chr', 'grch38loc','varid', 'alleleid', 'dbsnp', 'spdi']
 brdf = brdf[(brdf['conditions'].str.contains(r'(?=.*breast)', regex=True, case=False, na=False))]
+len(brdf)
 brcgenes = brdf['genes'].to_list()
 brcgenes = set(brcgenes)
-len(brdf)
+len(brcgenes)
+
+#only considering variants with dbsnp identifiers
+brdf_dbsnp = brdf.dropna(subset=['dbsnp'])
+brcgenes_dbsnp = brdf_dbsnp['genes'].to_list()
+brcgenes_dbsnp = set(brcgenes_dbsnp)
+len(brcgenes_dbsnp)
 
 #Complete list of genes associated with breast cancer (split on multiple listings)
 splitgs = set()
-for gene in brcgenes:
+for gene in brcgenes_dbsnp:
     gene = str(gene)
     if "|" in gene:
         gsplit = gene.split("|")
@@ -95,66 +97,40 @@ for gene in brcgenes:
         splitgs.add(gene)
 len(splitgs)
 
-#number of genes associated with breast cancer (not split on multiple listings - grouping = 1 gene)
-nosplits = set()
-for gene in brcgenes:
-    gene = str(gene)
-    if "|" in gene:
-        continue
-    else:
-        nosplits.add(gene)
-len(nosplits)
-
-#Load disease list
-disfile = open('./data/finalconditions.txt', "r")
-content = disfile.read()
-dis_set = content.split("\n")
-
-#Disease set with Breast cancer and other cancer
-disfileb = open('./data/finalconditionsbr.txt', "r")
-contentb = disfileb.read()
-dis_setb = contentb.split("\n")
-
-#Disease set with Breast cancer and other cancer
-disfile1 = open('./data/finalconditionswcs.txt', "r")
-content1 = disfile1.read()
-dis_set1 = content1.split("\n")
+#Secondary diseases list:
+dis_set = ['Fanconi anemia', 'Aplastic anemia', 'Thrombocytopenia', 'Dyskeratosis congenita',
+              'Nephrolithiasis', 'Cystinuria', 'Renal hypodysplasia', 'Renal aplasia', 'Microcephaly',
+              'Macrocephaly', 'Costello', 'Hemimegalencephaly', 'Lissencephaly', 'Nijmegen', 'Ataxia',
+              'Cockayne', 'Xeroderma pigmentosum', 'Blepharocheilodontic', 'Smith-Kingsmore', 'Crouzon',
+              'Cortical dysplasia', 'Polymicrogyria', 'Hirschsprung', 'Hutchinson-Gilford',
+              'Megalencephaly-capillary', 'Cardiofaciocutaneous', 'Seizure', 'Tracheoesophageal Fistula',
+              'VACTERL', 'Diaphyseal dysplasia', 'Dactyl', 'Noonan', 'Tuberous sclerosis', 'Thyroidism',
+              'Immunodeficiency', 'Bloom', 'Cystic Fibrosis', 'Pulmonary Fibrosis']
 
 #Identify SNPs associated with both breast cancer and disease
 dis = '|'.join(dis_set)
-pleios = brdf[brdf['conditions'].str.contains(dis, case=False)]
+pleios = brdf_dbsnp[brdf_dbsnp['conditions'].str.contains(dis, case=False)]
 len(pleios)
 
-#Identify genes associted with pleiotropic snps (not split on multiple listings - grouping = 1 gene)
+#Keep only the first gene name assocaited with the variants
+firstgene = pleios['genes'].str.split("|", n=1, expand = True)[0]
+pleios['genes'] = firstgene
+pleios = pleios.replace('C11orf65','ATM')
+pleios = pleios.replace('AOPEP','FANCC')
+
+#Identify genes associted with pleiotropic snps
 pgenes = pleios['genes'].unique()
-nopgs = set()
-for gene in pgenes:
-    gene = str(gene)
-    if "|" in gene:
-        continue
-    else:
-        nopgs.add(gene)
-len(nopgs)
 
-
-##Pleiotropic SNPs split on multiple listings
-pgs = set()
-for gene in pgenes:
-    gene = str(gene)
-    if "|" in gene:
-        pgss = gene.split("|")
-        pgs.update(pgss)
-    else:
-        pgs.add(gene)
-len(pgs)
-
-###list of genes for heatmap = pgs
+###list of genes for heatmap = pgenes###
 
 ####GENERATE DENSITY PLOTS FOR ALL SNPS####
-#Using diseases dataframe
+#Complete disease data frame from all clinvar snps associated with the listed secondary diseases
+diseases = pd.concat(map(pd.read_csv, glob.glob(os.path.join('./diseases', "*.csv"))), ignore_index=True)
+diseases.columns = ['name', 'genes', 'proteins', 'conditions', 'clinsig', 'review', 'accession', 'grch37chr', 'grch37loc', 'grch38chr', 'grch38loc','varid', 'alleleid', 'dbsnp', 'spdi']
+diseases = diseases.drop_duplicates()
 
 #Create a new dataframe with only the genes in 'genes' 
-genes_re = re.compile("|".join(pgs))
+genes_re = re.compile("|".join(pgenes))
 genedf = diseases[diseases['genes'].str.contains(genes_re, na=False)]
 
 for i in genedf:
@@ -186,17 +162,24 @@ densitydf = pd.DataFrame(list(zip(modlocs,gene_list,conditions_list)), columns =
 brc = 'breast'
 hcp = 'hereditary cancer-predisposing'
 
+cancer_set = ['Breast', 'Other Cancer']
+dis_cancer_set = cancer_set + dis_set
 
-for i in pgs:
+
+for i in pgenes:
     bygene = densitydf[densitydf['gene'].str.contains(i)]
     bygene = bygene.dropna()
     countdf = pd.DataFrame(columns = ['location', 'condition'])
     for index,row in bygene.iterrows():
-        for dis in dis_setb:
+        for dis in dis_cancer_set:
             if dis == 'Other Cancer':
                 matches = ["cancer", "Cancer", "carcinoma", "Carcinoma", "tumor", "Tumor", "oma"]
                 if any(x in row['conditions'] for x in matches) and not (brc.casefold() or hcp.casefold() in row['conditions']):
                     newdf = pd.DataFrame({"location":[row['location']], "condition":'Other Cancer'})
+                    countdf = countdf.append(newdf, ignore_index=True)
+            elif dis == 'Breast':
+                if dis.casefold() in row['conditions'].casefold():
+                    newdf = pd.DataFrame({"location":[row['location']], "condition":'Breast Cancer'})
                     countdf = countdf.append(newdf, ignore_index=True)
             elif dis.casefold() in row['conditions'].casefold():
                 newdf = pd.DataFrame({"location":[row['location']], "condition":dis})
@@ -230,14 +213,15 @@ for i in pgs:
 #####GENERATE HEATMAP FOR COLOCALZIED SNPs####
 
 #Iterate over list, search for matches and count number of times each disease appears on each gene, save to dataframe merged by gene
-newallgenecounts = pd.DataFrame(pgs, columns=['Gene'])
-for i in dis_set1:
-    if i == "Breast Cancer":
-        genecount = brdf['genes'].value_counts().rename_axis('Gene').reset_index(name='Breast Cancer')
+
+newallgenecounts = pd.DataFrame(pgenes, columns=['Gene'])
+for i in dis_cancer_set:
+    if i == "Breast":
+        genecount = pleios['genes'].value_counts().rename_axis('Gene').reset_index(name='Breast Cancer')
         newallgenecounts = newallgenecounts.merge(genecount, how='left', on=['Gene'])
     elif i == "Other Cancer":
         modcons = list()
-        for entry in brdf['conditions']:
+        for entry in pleios['conditions']:
             entry = str(entry)
             lst = entry.split("|")
             nob = [x for x in lst if "breast" not in x]
@@ -245,12 +229,12 @@ for i in dis_set1:
             nohcp = [x for x in nob if "Hereditary cancer-predisposing" not in x]
             nohcp_join = ''.join(nohcp)
             modcons.append(nohcp_join)
-        brdf['modcons'] = modcons
-        subset = brdf[(brdf['modcons'].str.contains(r'(?=.*cancer)', regex=True, case=False, na=False)) | (brdf['modcons'].str.contains(r'(?=.*carcinoma)', regex=True, case=False, na=False)) | (brdf['modcons'].str.contains(r'(?=.*tumor)', regex=True, case=False, na=False)) | (brdf['modcons'].str.contains(r'(?=.*oma)', regex=True, case=False, na=False))]
+        pleios['modcons'] = modcons
+        subset = pleios[(pleios['modcons'].str.contains(r'(?=.*cancer)', regex=True, case=False, na=False)) | (pleios['modcons'].str.contains(r'(?=.*carcinoma)', regex=True, case=False, na=False)) | (pleios['modcons'].str.contains(r'(?=.*tumor)', regex=True, case=False, na=False)) | (pleios['modcons'].str.contains(r'(?=.*oma)', regex=True, case=False, na=False))]
         genecount = subset['genes'].value_counts().rename_axis('Gene').reset_index(name='Other Cancer')
         newallgenecounts = newallgenecounts.merge(genecount, how='left', on=['Gene'])
     else:
-        subset = brdf[brdf['conditions'].str.contains(i, case=False, na=False)]
+        subset = pleios[pleios['conditions'].str.contains(i, case=False, na=False)]
         genecount = subset['genes'].value_counts().rename_axis('Gene').reset_index(name=i)
         newallgenecounts = newallgenecounts.merge(genecount, how='left', on=['Gene'])
 
@@ -266,18 +250,17 @@ newallgenecounts = (newallgenecounts.assign(sum=newallgenecounts.sum(axis=1)).so
 #Generate heatmap
 sns.set_theme()
 sns.set(rc={'figure.figsize':(20,15)})
-agc = sns.heatmap(newallgenecounts, cmap="coolwarm", robust=True, annot=True, fmt="1g")
-plt.title('Heatmap of All Disease SNPs on Key Genes')
-#agc.figure.savefig('agcall.png', dpi=100) ##To save heatmap file
+agc = sns.heatmap(newallgenecounts, cmap="coolwarm", annot=False, robust=True, fmt="1g")
+#plt.title('Heatmap of All Disease SNPs on Key Genes')
+agc.figure.savefig('agcall.png', dpi=1000) ##To save heatmap file
 
 ###List of SNPs and locations for MendelVar
 ###Mendelvar - coassociated SNPs, location interval
 #pleios df = snps assocaited with brc and additional condition
-
-pleiosnps = pleios.drop_duplicates(subset="dbsnp")
+#pleiosnps = pleios.drop_duplicates(subset="dbsnp")
 
 ##Generate location interval
-loc_list = pleiosnps['grch38loc'].tolist()
+loc_list = pleios['grch38loc'].tolist()
 loc1 = list()
 loc2 = list()
 for location in loc_list:
@@ -299,10 +282,10 @@ for location in loc_list:
         loc1.append(location)
         loc2.append(location)
 
-chr_list = pleiosnps['grch38chr'].tolist()
+chr_list = pleios['grch38chr'].tolist()
 string = "chr"
 chrs = [string + x for x in chr_list]
-db_list = pleiosnps['dbsnp'].tolist()
+db_list = pleios['dbsnp'].tolist()
 snpdf = pd.DataFrame(list(zip(chr_list,loc1,loc2,db_list)), columns = ['chromosome', 'location1', 'location2', 'dbsnp'])
 snpdf.to_csv('All SNPs', header=False, index=False, sep=" ")
 
@@ -311,17 +294,12 @@ snpdf.to_csv('All SNPs', header=False, index=False, sep=" ")
 ### GENERATION OF DATA SET FOR SNPS WITH BREAST CANCER + DISEASE : CO-LOCALIZED SNPS
 #Data set = pleiosnps
 
-sfp = pleiosnps[['genes','grch38loc','proteins','dbsnp']]
-sfp = sfp.replace(['ATM|C11orf65', 'C11orf65|ATM'], 'ATM')
-sfp = sfp.replace(['FANCC|AOPEP'], 'FANCC')
-sfp = sfp.replace(['FANCD2|LOC107303338'], 'FANCD2')
-sfp = sfp.replace(['HRAS|LRRC56'], 'HRAS')
-sfp = sfp.replace(['TH2LCRR|RAD50'], 'RAD50')
-sfp = sfp.replace(['BRCA2|LOC106721785'], 'BRCA2')
-sfp.dropna(subset = ['proteins'], inplace=True)
-sfp = sfp[~sfp['proteins'].str.contains('[a-z]')]
-sfp = sfp.reset_index(drop=True)
-sfp = sfp.sort_values('genes')
+sfp = pleios[['genes','grch38loc','proteins','dbsnp']]
+sfp.dropna(subset = ['proteins'], inplace=True) #drop variants missing protein change data
+sfp = sfp[~sfp['proteins'].str.contains('[a-z]')] #drop variants with fs and del mutations
+sfp = sfp.reset_index(drop=True) #reset index
+sfp = sfp.sort_values('genes') #sort by gene
+sfp_genes = sfp['genes'].unique() #genes with in-frame mutations
 
 #splitting protein change into start AA, location, end AA
 AA_old = list()
@@ -355,43 +333,73 @@ sfp_d = sfp['dbsnp'].tolist()
 sfp_c = sfp['grch38loc'].tolist()
 
 pro_sfp = pd.DataFrame(list(zip(sfp_g, sfp_d, sfp_c, AA_pos, AA_old, AA_new)), columns = ['gene', 'dbsnp', 'grch38loc','AA_pos', 'wt_AA', 'mut_AA'])
+##Make necessary corrections
+#BRCA1 rs587782026 AA_pos to 1824
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs587782026', 'AA_pos'] = 1824
+#BRCA1 rs1555579648 AA_pos to 1686
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs1555579648', 'AA_pos'] = 1686
+#BRCA1 rs1265352633 AA_pos to 1552
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs1265352633', 'AA_pos'] = 1552
+#BRCA1 rs45553935 AA_pos to 1736
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs45553935', 'AA_pos'] = 1736
+#BRCA1 rs80357123 AA_pos to 1751
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs80357123', 'AA_pos'] = 1751
+#BRCA1 rs80356885 AA_pos to 1508
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs80356885', 'AA_pos'] = 1508
+#BRCA1 rs80356962 AA_pos to 1815
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs80356962', 'AA_pos'] = 1815
+#BRCA1 rs55770810 AA_pos to 1699
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs55770810', 'AA_pos'] = 1699
+#PTEN rs121909219 AA_pos to 233
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs121909219', 'AA_pos'] = 233
+#CASR rs1801725 AA_pos to 986
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs1801725', 'AA_pos'] = 986
+#TGFB1 rs1800470 AA_old to L and AA_new to P
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs1800470', 'wt_AA'] = 'L'
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs1800470', 'mut_AA'] = 'P'
+#FGFR2 rs1057519045 AA_pos to 549
+pro_sfp.loc[pro_sfp['dbsnp'] == 'rs1057519045', 'AA_pos'] = 549
 
-snp_res = pd.DataFrame(list(zip(sfp_g, sfp_d, AA_pos, AA_old, AA_new)), columns = ['gene', 'dbsnp','AA_pos', 'wt_AA', 'mut_AA'])
-snp_res.to_csv('snp_residues.csv', index=False)
+
+snpres = pro_sfp.drop(columns=['grch38loc'])
+snpres.to_csv('snp_residues.csv', index=False) #save SNP list file
 
 for filename in os.listdir('./fastas'):
-    genename = filename.rsplit('.',1)[0]
-    filepath = os.path.join('./fastas',filename)
-    snp_proteins = []
-    for seq_record in SeqIO.parse(filepath, 'fasta'):
-        snp_proteins.append(seq_record)
-    for index, row in pro_sfp.iterrows():
-        if row['gene'] == genename:
-            pos = int(row['AA_pos']) - 1
-            for seq_record in SeqIO.parse(filepath, 'fasta'):
-                if pos < len(seq_record) and seq_record[pos] == row['wt_AA']:
-                    if row['mut_AA'] == 'fs':
-                        continue
+    if filename.endswith(".fasta"):
+        genename = filename.rsplit('.',1)[0]
+        filepath = os.path.join('./fastas',filename)
+        snp_proteins = []
+        for seq_record in SeqIO.parse(filepath, 'fasta'):
+            snp_proteins.append(seq_record)
+        for index, row in pro_sfp.iterrows():
+            if row['gene'] == genename:
+                pos = int(row['AA_pos']) - 1
+                for seq_record in SeqIO.parse(filepath, 'fasta'):
+                    if pos < len(seq_record) and seq_record[pos] == row['wt_AA']:
+                        if row['mut_AA'] == 'fs':
+                            continue
+                        else:
+                            seq_new = seq_record
+                            seq_new = seq_new[:pos] + row['mut_AA'] + seq_new[pos+1:]
+                            seq_new.id = str(row['gene']) + '|' + str(row['dbsnp'])
+                            seq_new.name = str(row['gene']) + '|' + str(row['dbsnp'])
+                            seq_new.description = str(row['gene']) + '|' + str(row['dbsnp'])
+                            snp_proteins.append(seq_new)
                     else:
-                        seq_new = seq_record
-                        seq_new = seq_new[:pos] + row['mut_AA'] + seq_new[pos+1:]
-                        seq_new.id = str(row['gene']) + '|' + str(row['dbsnp'])
-                        seq_new.name = str(row['gene']) + '|' + str(row['dbsnp'])
-                        seq_new.description = str(row['gene']) + '|' + str(row['dbsnp'])
-                        snp_proteins.append(seq_new)
-                else:
-                    print('WT AA does not match isoform entry for SNP:')
-                    print(row['gene'],row['dbsnp'])
-                    
-    saveas = "coassoc_" + filename
-    SeqIO.write(snp_proteins, filename, "fasta")
+                        print('WT AA does not match isoform entry for SNP:') ##warning for mis-aligned SNPS
+                        print(row['gene'],row['dbsnp'])
+                        
+        saveas = "coassoc_" + filename
+        SeqIO.write(snp_proteins, filename, "fasta")
 
 ### RESIDUE CONSERVATION CALCULATIONS
-# Read in CO-LOCALIZED snps csv file with gene (gene name), dbsnp (ID#), and AA_pos (residue position)
-snpres = pd.read_csv('snp_residues.csv')
 
 # Generate list of all genes represented in file
 genes = snpres.gene.unique()
+
+#Drop duplicate dbSNP IDs when SNP associated with multiple protein changes
+snpres_nr = snpres.drop_duplicates(subset='dbsnp')
+
 
 # Single letter amino acid data for dataframe
 aaslc = ['G', 'P', 'A', 'V', 'L', 'I', 'M', 'C', 'F', 'Y', 'W', 'H', 'K', 'R', 'Q', 'N', 'E', 'D', 'S', 'T', '-']
@@ -404,7 +412,7 @@ for gene in genes:
     filepath = os.path.join('./alignments',filename) #filepath to search for gene alignment file in alignment folder
     alldf = pd.DataFrame(data=a) #initialize alldf with the aaslc column
     shanen = list()
-    for index, row in snpres.iterrows(): #loop through rows in snpres df
+    for index, row in snpres_nr.iterrows(): #loop through rows in snpres_nr df
         snp_dict = {}
         if row['gene'] == gene: #for any row containing the gene name
             snp = []
@@ -424,19 +432,21 @@ for gene in genes:
                 df = pd.DataFrame.from_dict(count,orient='index') #create a df from the dictionary
                 df = df.reset_index()
                 df.columns = ['AA', key] # rename the columns
-                alldf = alldf.merge(df, how='left', on='AA') #merge the new df onto the alldf by AA position
-                alldf[key] = alldf[key].replace(np.nan,0)
-                
-    saveas = gene + ' Co-Localized SNP Amino Acid Residue Conservation Counts.csv'
-    alldf.to_csv(saveas, index=False) # save to .csv file
+                alldf = alldf.merge(df, how='left', on='AA').replace(np.nan,0) #merge the new df onto the alldf by AA position
+    
+    ##TO SAVE AND VIEW COUNTS            
+    #saveas = gene + ' Conservation Counts.csv'
+    #alldf.to_csv(saveas, index=False) # save to .csv file
     
     # generate percentage counts table
     for column in alldf: #for each column in the alldf
         if column != 'AA': #not the AA column
             alldf[column] = alldf[column].transform(lambda x: (x / x.sum())*100) #transform counts into percentages of total
     alldf = alldf.round(2) #round to 2 decimal places
-    saveas = gene + ' Co-Localized SNP Amino Acid Residue Conservation Percentages.csv'
-    alldf.to_csv(saveas, index=False) # save to .csv file
+    
+    ##TO SAVE AND VIEW PERCENTAGES
+    #saveas = gene + ' Conservation Percentages.csv'
+    #alldf.to_csv(saveas, index=False) # save to .csv file
     
     # create a summary table from the results
     sumdf = alldf.set_index('AA')
@@ -455,20 +465,20 @@ for gene in genes:
     topaadf = topaadf.rename(columns={'index':'dbSNP'})
     topaadf['Shannon Entropy'] = shanen
     genedf = snpres[snpres['gene'].str.contains(gene)]
-    #genedf = genedf.drop(columns=['gene'])
     genedf = genedf.rename(columns={"dbsnp": "dbSNP", "AA_pos":"Residue", "wt_AA": "Isoform 1 AA", "mut_AA": "SNP AA"})
     
     summarydf = genedf.merge(topaadf, how='left', on="dbSNP")
     summarydf.loc[(summarydf['3rd Highest AA:% as Res'] == 'G : 0.0'), '3rd Highest AA:% as Res'] = 'NaN'
     summarydf.loc[(summarydf['3rd Highest AA:% as Res'] == 'P : 0.0'), '3rd Highest AA:% as Res'] = 'NaN'
             
-    
-    saveas = gene + ' Co-Localized SNP Residue Conservation Summary.csv'
-    summarydf.to_csv(saveas, index=False) # save to .csv file
+    ##TO SAVE AND VIEW PER GENE SUMMARIES
+    #saveas = gene + ' Conservation Summary.csv'
+    #summarydf.to_csv(saveas, index=False) # save to .csv file
     
     finalsum = pd.concat([finalsum,summarydf], ignore_index=True)
 
-finalsum.to_csv('All Genes Summary Table.csv', index=False) # complete summary table save to .csv file
+##TO SAVE SUMMARY FILE TO CSV
+finalsum.to_csv('All Genes Summary Table.csv', index=False)
 
 
 ###PyRosetta Score Generation
@@ -476,10 +486,14 @@ from rosetta.protocols.relax import FastRelax
 sfxn = get_score_function(True)
 fr = FastRelax()
 fr.set_scorefxn(sfxn)
-fr.max_iter(100)
 
-#Call in File with conserved snps for mutagenesis
-prsnps = pd.read_csv('./data/pyrosettasnps.csv')
+##Dataframe of conserved, missense mutations (SE <= 1.0 and excluding nonsense * mutations)
+prsnps = finalsum[['gene', 'dbSNP', 'Residue', 'Isoform 1 AA', 'SNP AA', 'Shannon Entropy']]
+prsnps = prsnps.loc[prsnps['Shannon Entropy'] <= 1]
+prsnps = prsnps.loc[prsnps['SNP AA'] != '*']
+prsnps = prsnps.drop(columns=['Shannon Entropy'])
+prsnps = prsnps.rename(columns={'dbSNP': 'dbsnp', 'Residue': 'res', 'Isoform 1 AA': 'i1aa', 'SNP AA': 'snpaa'})
+
 
 scoredf = pd.DataFrame(columns = ['dbsnp','score'])
 genescores = pd.DataFrame(columns = ['gene', 'score'])
@@ -511,10 +525,15 @@ for filename in os.listdir('./pdbs'):
                         t1 = 'H'
                     elif tres == 'MET:NtermProteinFull':
                         t1 = 'M'
+                    elif tres == 'LYS:NtermProteinFull':
+                        t1 = 'L'
                     else:
                         t1 = three_to_one(tres)
                 if row['i1aa'] == t1:                
-                    mutate_residue(original_pose, fres, row['snpaa'])
+                    mutate_residue(original_pose, fres, row['snpaa'],pack_radius=4.5)
+                    ##TO SAVE MUTATED PROTEINS
+                    #mname = genename + "_mutated.pdb" 
+                    #original_pose.dump_pdb(mname)
                     mscore = sfxn(original_pose)
                     netscore = mscore - ascore
                     scoredf = scoredf.append({'dbsnp': row['dbsnp'], 'score': netscore}, ignore_index=True)
@@ -524,3 +543,11 @@ for filename in os.listdir('./pdbs'):
 finalscores = prsnps.merge(scoredf, on="dbsnp")
 finalscores.to_csv('final_scores.csv', index=False)
 genescores.to_csv('gene_scores.csv', index=False)
+
+
+##Determine pathogenic classification of modeled SNPs
+clinsig = brdf[["dbsnp","clinsig"]]
+clinsig = clinsig.drop_duplicates(subset=['dbsnp'])
+scores = pd.read_csv('final_scores.csv')
+clinscores = scores.merge(clinsig, how="left",on="dbsnp")
+clinscores.to_csv('clinscores.csv', index=False)
