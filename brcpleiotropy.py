@@ -174,7 +174,7 @@ for i in pgenes:
         for dis in dis_cancer_set:
             if dis == 'Other Cancer':
                 matches = ["cancer", "Cancer", "carcinoma", "Carcinoma", "tumor", "Tumor", "oma"]
-                if any(x in row['conditions'] for x in matches) and not (brc.casefold() or hcp.casefold() in row['conditions']):
+                if any(x in row['conditions'] for x in matches) and not (brc.casefold() in row['conditions']) and not (hcp.casefold() in row['conditions']):
                     newdf = pd.DataFrame({"location":[row['location']], "condition":'Other Cancer'})
                     countdf = countdf.append(newdf, ignore_index=True)
             elif dis == 'Breast':
