@@ -45,30 +45,6 @@ def shannon_entropy(sequence):
  
     return shannon_entropy_value * -1
 
-def eta(data, unit='natural'):
-    base = {
-        'shannon' : 2.,
-        'natural' : math.exp(1),
-        'hartley' : 10.
-    }
-
-    if len(data) <= 1:
-        return 0
-
-    counts = Counter()
-
-    for d in data:
-        counts[d] += 1
-
-    ent = 0
-
-    probs = [float(c) / len(data) for c in counts.values()]
-    for p in probs:
-        if p > 0.:
-            ent -= p * math.log(p, base[unit])
-
-    return ent
-
 pd.set_option('display.max_colwidth',None)
 
 #Dataframe from clinvar snps associated with breast cancer
@@ -400,9 +376,8 @@ genes = snpres.gene.unique()
 #Drop duplicate dbSNP IDs when SNP associated with multiple protein changes
 snpres_nr = snpres.drop_duplicates(subset='dbsnp')
 
-
 # Single letter amino acid data for dataframe
-aaslc = ['G', 'P', 'A', 'V', 'L', 'I', 'M', 'C', 'F', 'Y', 'W', 'H', 'K', 'R', 'Q', 'N', 'E', 'D', 'S', 'T', '-']
+aaslc = ['G', 'P', 'A', 'V', 'L', 'I', 'M', 'C', 'F', 'Y', 'W', 'H', 'K', 'R', 'Q', 'N', 'E', 'D', 'S', 'T']
 
 finalsum = pd.DataFrame(columns=['gene','dbSNP','Residue','Isoform 1 AA', 'SNP AA', 'Highest AA:% at Res','2nd Highest AA:% at Res', '3rd Highest AA:% as Res', 'Shannon Entropy'])
 # Loop through each gene to make subset dataframe from only that gene's SNPs
@@ -412,6 +387,7 @@ for gene in genes:
     filepath = os.path.join('./alignments',filename) #filepath to search for gene alignment file in alignment folder
     alldf = pd.DataFrame(data=a) #initialize alldf with the aaslc column
     shanen = list()
+    aln_counts = {} #counts for number of sequences in alignment excluding gaps (-)
     for index, row in snpres_nr.iterrows(): #loop through rows in snpres_nr df
         snp_dict = {}
         if row['gene'] == gene: #for any row containing the gene name
@@ -420,12 +396,15 @@ for gene in genes:
             for record in SeqIO.parse(filepath, 'fasta'): #for each sequence in the alignment file 
                 if pos < len(record):
                     seq = record.seq[pos] # save the pos residue AA as seq
-                    snp.append(seq) # add the seq AA to the snp list
+                    if seq != '-':
+                        snp.append(seq) # add the seq AA to the snp list
             snp_dict[row['dbsnp']] = snp
+            res_count = len(snp)
+            aln_counts[row['dbsnp']] = res_count
             for key, value in snp_dict.items(): #for each item in the snp_dict
                 separator = ""
                 res_join = separator.join(value)
-                shan = eta(res_join, unit='natural')
+                shan = shannon_entropy(res_join)
                 shan = round(shan, 4)
                 shanen.append(shan)
                 count= Counter(res_join) #count the number of times each AA appears
@@ -433,7 +412,7 @@ for gene in genes:
                 df = df.reset_index()
                 df.columns = ['AA', key] # rename the columns
                 alldf = alldf.merge(df, how='left', on='AA').replace(np.nan,0) #merge the new df onto the alldf by AA position
-    
+
     ##TO SAVE AND VIEW COUNTS            
     #saveas = gene + ' Conservation Counts.csv'
     #alldf.to_csv(saveas, index=False) # save to .csv file
@@ -468,9 +447,11 @@ for gene in genes:
     genedf = genedf.rename(columns={"dbsnp": "dbSNP", "AA_pos":"Residue", "wt_AA": "Isoform 1 AA", "mut_AA": "SNP AA"})
     
     summarydf = genedf.merge(topaadf, how='left', on="dbSNP")
-    summarydf.loc[(summarydf['3rd Highest AA:% as Res'] == 'G : 0.0'), '3rd Highest AA:% as Res'] = 'NaN'
-    summarydf.loc[(summarydf['3rd Highest AA:% as Res'] == 'P : 0.0'), '3rd Highest AA:% as Res'] = 'NaN'
-            
+    aln_cdf = pd.DataFrame.from_dict(aln_counts, orient='index', columns = ['Alignment Count'])
+    aln_cdf = aln_cdf.reset_index()
+    aln_cdf = aln_cdf.rename(columns={'index':'dbSNP'})
+    summarydf = summarydf.merge(aln_cdf, how = 'left', on="dbSNP")
+    
     ##TO SAVE AND VIEW PER GENE SUMMARIES
     #saveas = gene + ' Conservation Summary.csv'
     #summarydf.to_csv(saveas, index=False) # save to .csv file
