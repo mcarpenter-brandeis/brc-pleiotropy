@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+## Manuscript Citation as:
+## Meredith A. Carpenter & Alan C. Cheng. Predicting functionally important breast cancer SNPs using pleiotropy, conservation, and protein structure. Submitted (2022)
 """
 @author: meredithcarpenter
 """
